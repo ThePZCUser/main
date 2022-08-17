@@ -1,0 +1,273 @@
+--SQL Queries- Gender Pay Gap Analysis
+--NOTE: all detailed written answers in separate Google Sheets doc.
+
+--How many companies are in the dataset?
+SELECT COUNT(employerid)
+FROM gender_pay_gap_21_22;
+--Answer: 10174 employers in data set
+
+--How many of them submitted their data after the
+--reporting deadline?
+SELECT COUNT(employerid)
+FROM gender_pay_gap_21_22
+WHERE datesubmitted > duedate;
+--A: 608 employers submitted after deadine
+
+--How many companies have not provided a URL?
+SELECT COUNT(employerid)
+FROM public.gender_pay_gap_21_22
+WHERE companylinktogpginfo = '0';
+--A: 3700 companies haven't provided URL
+
+--Which measures of pay gap contain too much missing data 
+-- and should not be used in our analysis?
+SELECT COUNT(employerid)
+FROM public.gender_pay_gap_21_22
+WHERE diffmedianbonuspercent = '0';
+--A: Median bonus percent difference has the most null values at 4019.
+
+--Use an appropriate metric to find the average gender pay
+--gap across all the companies in the data set.
+SELECT ROUND(AVG(diffmedianhourlypercent),2)||'%' AS avg_company_median
+FROM gender_pay_gap_21_22;
+--A: 12.31% UK-wide average
+
+--What are the 10 companies with the largest pay gaps skewed
+--towards men?
+SELECT employername, diffmedianhourlypercent,employersize
+FROM gender_pay_gap_21_22
+ORDER BY diffmedianhourlypercent DESC
+LIMIT 10;
+--A: See table for largest difference
+
+--S3.2: Grouping analysis into larger, summary data
+SELECT
+    employer_size AS Employer_Size
+    ,COUNT(employer_size) AS Qty_of_Employers
+    ,ROUND(AVG(diffmedianhourlypercent),2)||'%' AS Median_Gender_Gap
+FROM (
+    SELECT
+        CASE
+            WHEN employersize LIKE '5000 to 19,999'
+                OR employersize LIKE '20,000 or more'
+                THEN 'Large Company'
+            WHEN employersize LIKE '1000 to 4999'
+                OR employersize LIKE '500 to 999'
+                OR employersize LIKE '250 to 499'
+                OR employersize LIKE 'Less than 250'
+                THEN 'Small Company'
+            ELSE 'Size Not Reported'
+        END AS employer_size
+        ,diffmedianhourlypercent
+    FROM gender_pay_gap_21_22
+    ) AS dEmployer_size
+GROUP BY employer_size;
+--A: see table for large companies
+
+--What's the average pay gap in London vs. outside London?
+SELECT
+	CASE
+		WHEN postcode LIKE 'E1%'
+			OR postcode LIKE 'E2%'
+			OR postcode LIKE 'E3%'
+			OR postcode LIKE 'E4%'
+			OR postcode LIKE 'E5%'
+			OR postcode LIKE 'E6%'
+			OR postcode LIKE 'E7%'
+			OR postcode LIKE 'E8%'
+			OR postcode LIKE 'E9%'
+			THEN 'London'
+		WHEN postcode LIKE 'WC1%'
+			OR postcode LIKE 'WC2%'
+			THEN 'London'
+		WHEN postcode LIKE 'EC1%'
+			OR postcode LIKE 'EC2%'
+			OR postcode LIKE 'EC3%'
+			OR postcode LIKE 'EC4%'
+			THEN 'London'
+		WHEN postcode LIKE 'N1%'
+			OR postcode LIKE 'N2%'
+			OR postcode LIKE 'N3%'
+			OR postcode LIKE 'N4%'
+			OR postcode LIKE 'N5%'
+			OR postcode LIKE 'N6%'
+			OR postcode LIKE 'N7%'
+			OR postcode LIKE 'N8%'
+			OR postcode LIKE 'N9%'
+			THEN 'London'
+		WHEN postcode LIKE 'NW1%'
+			OR postcode LIKE 'NW2%'
+			OR postcode LIKE 'NW3%'
+			OR postcode LIKE 'NW4%'
+			OR postcode LIKE 'NW5%'
+			OR postcode LIKE 'NW6%'
+			OR postcode LIKE 'NW7%'
+			OR postcode LIKE 'NW8%'
+			OR postcode LIKE 'NW9%'
+			THEN 'London'
+		WHEN postcode LIKE 'SE1%'
+			OR postcode LIKE 'SE2%'
+			OR postcode LIKE 'SE3%'
+			OR postcode LIKE 'SE4%'
+			OR postcode LIKE 'SE5%'
+			OR postcode LIKE 'SE6%'
+			OR postcode LIKE 'SE7%'
+			OR postcode LIKE 'SE8%'
+			OR postcode LIKE 'SE9%'
+			THEN 'London'
+		WHEN postcode LIKE 'SW1%'
+			OR postcode LIKE 'SW2%'
+			OR postcode LIKE 'SW3%'
+			OR postcode LIKE 'SW4%'
+			OR postcode LIKE 'SW5%'
+			OR postcode LIKE 'SW6%'
+			OR postcode LIKE 'SW7%'
+			OR postcode LIKE 'SW8%'
+			OR postcode LIKE 'SW9%'
+			THEN 'London'
+		WHEN postcode LIKE 'W1%'
+			OR postcode LIKE 'W2%'
+			OR postcode LIKE 'W3%'
+			OR postcode LIKE 'W4%'
+			OR postcode LIKE 'W5%'
+			OR postcode LIKE 'W6%'
+			OR postcode LIKE 'W7%'
+			OR postcode LIKE 'W8%'
+			OR postcode LIKE 'W9%'
+			THEN 'London'			
+		ELSE 'Outside London'
+	END AS city
+  , ROUND(AVG(diffmeanhourlypercent),2)||'%' AS avg_mean_difference
+  , ROUND(AVG(diffmedianhourlypercent),2)||'%' AS avg_median_difference
+  , COUNT(employerid)
+FROM gender_pay_gap_21_22
+GROUP BY city
+ORDER BY city;
+--A: Average median pay gap throughout London is 13.79, outside London, 11.92.
+
+--What's the average pay gap in London vs. Birmingham?
+/*To determine how to use CASE WHEN for London, we used a
+derived table to first pull all addresses remotely related
+to the city and ID a good search string term:*/
+SELECT address, city
+FROM (
+    SELECT
+        address
+        ,CASE
+            WHEN address ILIKE '%London%' THEN 'London'
+            ELSE 'NA'
+        END AS city
+    FROM gender_pay_gap_21_22
+    ) AS dCity
+WHERE city = 'London';
+--Now use derived tables and the identified search strings to pull data for each city:
+SELECT
+    city
+    ,COUNT(city)
+    ,ROUND(AVG(diffmeanhourlypercent),2)||'%' AS avg_mean_difference
+    ,ROUND(AVG(diffmedianhourlypercent),2)||'%' AS avg_median_difference
+FROM (
+    SELECT
+        CASE
+            WHEN address ILIKE '%, London,%' THEN 'London'
+            WHEN address ILIKE '%, Birmingham,%' THEN 'Birmingham'
+            ELSE 'Other Cities'
+        END AS city
+        ,diffmeanhourlypercent
+        ,diffmedianhourlypercent
+    FROM gender_pay_gap_21_22
+    ) AS dCity
+GROUP BY city;
+--A: The average median pay gap throughout London is 13.79, and Birmingham, 10.75.
+
+--What's the average pay gap within schools?
+/*Ideally we would use SIC codes to search by industry. However,
+using the length function we determine that there are MANY companies
+with MULTIPLE sic codes.*/
+SELECT employername, siccodes, LENGTH(siccodes) AS sic_length
+FROM gender_pay_gap_21_22
+ORDER BY sic_length DESC;
+/*Using online resources we determine the codes we want, and
+regex helps filter out codes. Once we verify correct categories, we can analyze:*/
+SELECT
+    CASE
+        WHEN siccodes LIKE '%85___%' 
+            AND siccodes NOT LIKE '%85__,%'
+            AND siccodes NOT LIKE '%85_, %'
+            AND siccodes NOT LIKE '%85, _%'
+            AND siccodes NOT LIKE '%85600%'
+            THEN 'School'
+        WHEN siccodes LIKE '%64110%'
+            OR siccodes LIKE '%64191%'
+            THEN 'Bank'
+        ELSE 'Other Ind.'
+    END AS industry
+    ,COUNT(employerid)
+    ,ROUND(AVG(diffmedianhourlypercent),2)||'%' AS avg_med_diff
+FROM gender_pay_gap_21_22
+GROUP BY industry;
+
+--What's the average pay gap within banks?
+--Adding an additional GROUP BY lets us look at size:
+SELECT
+    CASE
+        WHEN siccodes ~ '85\d{3}'
+            THEN 'Education'
+        WHEN siccodes ~ '6[4-6]\d{3}'
+            THEN 'Finance & Insurance'
+        ELSE 'Other Industries'
+    END AS industry
+    ,employersize
+    ,ROUND(AVG(diffmedianhourlypercent),2)||'%' AS avg_med_diff
+FROM gender_pay_gap_21_22
+GROUP BY industry,employersize
+ORDER BY industry;
+
+--Additional Query: Examining submission compliance
+--and gender gap:
+SELECT
+    CASE
+        WHEN datesubmitted > duedate
+        THEN 'Submitted Late'
+    ELSE 'Submitted On Time'
+    END AS deadline_compliance
+    ,COUNT(employerid) AS Qty_Submitted
+    ,ROUND(AVG(diffmedianhourlypercent),2)||'%' AS Median_Gender_gap
+FROM gender_pay_gap_21_22
+GROUP BY deadline_compliance;
+
+--Additional Query: companytype by date
+SELECT duedate
+    ,ROUND(AVG(diffmedianhourlypercent),2)||'%' AS avg_med_diff
+FROM gender_pay_gap_21_22
+GROUP BY duedate;
+
+--Additional Query: Analysis of London/NonLondon by industry specialization
+SELECT
+    city
+    ,industry
+    ,COUNT(employername)
+    ,ROUND(AVG(diffmedianhourlypercent),2)||'%' AS avg_med_diff
+FROM (
+    SELECT
+        CASE
+            WHEN siccodes ~ '69\d{3}'
+                OR siccodes ~'7[0-5]\d{3}'
+                THEN 'Professional, scientific and technical activities'
+            WHEN siccodes ~ '6[4-6]\d{3}'
+                THEN 'Finance & Insurance'
+            WHEN siccodes ~ '5[8-9]\d{3}'
+                OR siccodes ~ '6[1-3]\d{3}'
+                THEN 'Information & Communication'
+            ELSE 'Other Industries'
+            WHEN 
+        END AS industry
+        ,CASE
+            WHEN address ILIKE '%, London,%' THEN 'London'
+            ELSE 'Other Cities'
+        END AS city
+        ,employername
+        ,diffmedianhourlypercent
+    FROM gender_pay_gap_21_22
+    ) AS dLondon
+GROUP BY city,industry

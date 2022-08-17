@@ -1,0 +1,360 @@
+--CAPITAL BIKESHARE SQL CODEBASE
+--PAUL ZEE-CHENG
+
+/* FOR THE GENERAL ASSEMBLY PRECOVID DATABASE: Precovid (pre-2019) query only.
+To determine ride volume downtown pre-covid. Note this query does not apply
+to the database of post-covid rides. */
+SELECT COUNT(*)
+FROM capitalbikeshare_2019 AS c16
+	INNER JOIN capitalbikeshare_stations AS css
+		ON c16.end_station_id = css.id
+WHERE c16.end_station_id = css.id
+	AND css.latitude BETWEEN 38.872092 AND 38.913002
+	AND css.longitude BETWEEN -77.064708 AND -76.995724;
+
+/* All remaining queries are via self-created local database. */
+	
+/* To export data into .csv for import into Tableau. Can't save data due to
+General Assembly privilage restrictions, so must save output */
+SELECT *
+FROM capitalbikeshare_2019
+
+/* To create ride tables for 2016 through 2019, in the same
+database as post-Covid tables, using post-Covid format.
+Only 2016 included here, for the sake of brevity.*/
+CREATE TABLE capital_bikeshare_2019(
+	bike_id VARCHAR(50)
+	, ride_id VARCHAR(50)
+	, ride_type VARCHAR(50)
+	, start_date TIMESTAMP
+	, end_date TIMESTAMP
+	, start_location VARCHAR(150)
+	, start_station_id INT
+	, end_location VARCHAR(150)
+	, end_station_id INT
+	, start_lat DOUBLE PRECISION
+	, start_lng DOUBLE PRECISION
+	, end_lat DOUBLE PRECISION
+	, end_lng DOUBLE PRECISION
+	, member_type VARCHAR(50)
+	, duration_interval INTERVAL
+);
+
+/* Table creation for post-Covid bikeshare tables was
+done via PGAdmin's GUI, so no code included here. */
+
+/* Importing pre-Covid General Assembly ride tables into
+local database was done using PGAdmin's GUI, so no
+code included here. */
+
+/* Merging or importing monthly post-Covid ride table
+data into a single year was done using PGAdmin's GUI,
+so no code included here. */
+
+/* To change member fields in ride tables 2016 - 2020 to
+match case of fields in ride tables 2021-2022, which are all
+lower-case. */
+UPDATE public.capital_bikeshare_2020
+	SET member_type = lower(member_type);
+
+/* To update 2019 station table IDs to match my 2020-2022
+table format.*/
+ALTER TABLE capitalbikeshare_stations_2019
+ALTER COLUMN station_id
+TYPE CHARACTER VARYING(10);
+
+/* To query a clean list of stations in 2022, not just from
+2019, but also add on any missing information from 
+the old 2019 ride table. Old tables have 'locked' column,
+the number of bike docks, and whether or not the existing
+stations were in DC ('owner'). New 2022 stations won't
+be differentiated between DC and non-DC, though, so
+the 'owner' column will not be that useful. */
+COPY (
+SELECT DISTINCT ON (c22.end_station_id) c22.end_station_id AS station_id
+	, c22.end_location AS station_name
+	, c22.end_lat AS latitude
+	, c22.end_lng AS longitude
+	, c19.terminal_id
+	, c19.name AS station_name_19
+	, c19.station_id AS station_id_19
+	, c19.latitude AS lat19
+	, c19.longitude AS lng19
+	, c19.locked
+	, c19.docks
+	, c19.owner
+FROM capital_bikeshare_2022 AS c22
+FULL OUTER JOIN capitalbikeshare_stations_2019 AS c19
+	ON c22.end_station_id = c19.station_id
+WHERE c22.end_station_id IS NOT NULL
+	OR c22.end_location IS NOT NULL
+) TO 'C:\Users\public\station22outerjoin.txt' DELIMITER ',' CSV HEADER;
+
+/* NOTE: TO ENSURE ALL STATIONS CAPTURED, use a full outer
+join with 2019 and 2022, selecting only NULL station_ids
+for each year. */
+
+/* To add station name and coordinates to starting stations
+locations, in 2016-2019 ride tables. Only one code block
+included for brevity.*/
+UPDATE capital_bikeshare_2016
+	SET start_location = cbs.name
+	, start_lat = cbs.latitude
+	, start_lng = cbs.longitude
+FROM capitalbikeshare_stations_2019 AS cbs
+WHERE start_station_id = cbs.station_id;
+
+/* To add station name and coordinates to ending station
+locations, in 2016-2019 ride tables. Only one code block
+included for brevity. */
+UPDATE capital_bikeshare_2019
+	SET end_location = cbs.name
+	, end_lat = cbs.latitude
+	, end_lng = cbs.longitude
+FROM capitalbikeshare_stations_2019 AS cbs
+WHERE end_station_id = cbs.station_id;
+
+/* To add coordinates to starting stations locations,
+in 2020 ride table, and update coordinates for 2021
+and 2022 tables, to standardize all coordinates if 
+starting location was at a named station. Only one
+query listed here.*/
+UPDATE capital_bikeshare_2020
+	SET start_lat = cbs.latitude
+	, start_lng = cbs.longitude
+FROM cbstation_2022 AS cbs
+WHERE start_station_id = cbs.station_id;
+
+/* To add coordinates to ending stations locations,
+in 2020 ride table, and update coordinates for 2021
+and 2022 tables, to standardize all coordinates if 
+starting location was at a named station. Only one
+query listed here.*/
+UPDATE capital_bikeshare_2020
+	SET end_lat = cbs.latitude
+	, end_lng = cbs.longitude
+FROM cbstation_2022 AS cbs
+WHERE end_station_id = cbs.station_id;
+
+/* To delete NULL starting or ending coordinates from 
+2016 to 2019 tables. After filling in coordinates
+using 2019 reference table, I noticed that the 2019
+station reference table is missing stations that were
+included in pre-Covid data. These rides with incomplete
+station data have to be removed because they are not
+useable in analysis. */
+DELETE FROM capital_bikeshare_2018
+WHERE start_location IS NULL
+	OR end_location IS NULL
+RETURNING *;
+
+/* To undo all my work and change all station IDs, from 
+all tables, back into INTEGER data type because it's easier
+than converting pre-2020 data into a different format, as I
+have limited access to pre-2020 data.*/
+ALTER TABLE public.capital_bikeshare_2020
+	ALTER COLUMN start_station_id TYPE INT
+		USING start_station_id::integer
+	, ALTER COLUMN end_station_id TYPE INT
+			USING end_station_id::integer;
+ALTER TABLE public.capital_bikeshare_2021
+	ALTER COLUMN start_station_id TYPE INT
+		USING start_station_id::integer
+	, ALTER COLUMN end_station_id TYPE INT
+			USING end_station_id::integer;
+ALTER TABLE public.capitalbikeshare_stations_2019
+	ALTER COLUMN station_id TYPE INT
+		USING station_id::integer;
+ALTER TABLE public.cbstation_2022
+	ALTER COLUMN station_id TYPE INT
+		USING station_id::integer;	
+	
+/* To delete any 2022 stations with 0 or NULL coordinates.*/
+DELETE FROM public.cbstation_2022
+WHERE latitude IS NULL
+	OR longitude IS NULL
+	OR latitude = 0
+	OR longitude = 0
+RETURNING *;
+
+/* To test 2020-2022 ride data for NULL values. This
+Analysis was performed on all years and on all columns.
+It was determined that only start and end station
+information (i.e. location, ID, coordinates) was NULL.
+All tables queried but only one code block included 
+for brevity.*/
+SELECT COUNT(*)
+FROM capital_bikeshare_2020
+WHERE (start_lng IS NULL
+	OR end_lng IS NULL)
+	AND RIDE_TYPE IS NOT NULL;
+	
+/* To clean POST-COVID RIDE TABLES ONLY by deleting NULL
+start or end coordinates. Because pre-covid tables
+did not have coordinate data separate from their station
+coordinates, their tables were not cleaned of missing
+coordinates (unless the station itself was missing, per 
+the cleaning step listed above). */ 
+DELETE FROM capital_bikeshare_2020
+WHERE (start_lng IS NULL
+	OR end_lng IS NULL)
+	AND RIDE_TYPE IS NOT NULL;
+DELETE FROM capital_bikeshare_2021
+WHERE (start_lng IS NULL
+	OR end_lng IS NULL)
+	AND RIDE_TYPE IS NOT NULL;
+DELETE FROM capital_bikeshare_2022
+WHERE (start_lng IS NULL
+	OR end_lng IS NULL)
+	AND RIDE_TYPE IS NOT NULL;
+
+/* To clean post-Covid ride tables only be deleting rides
+that start or end at test station locations, which have 0/0
+coordinates. Query run on all 3 years, only one recorded
+below. */
+DELETE FROM capital_bikeshare_2020
+WHERE start_lat = 0
+	OR end_lat = 0
+RETURNING *;
+
+/* To remove administrative rides out of test warehouses, 
+station ID #32901 & 32906. Note these stations actually
+have coordinates but are assumed to be related only
+to administrative ride tests.*/
+DELETE FROM capital_bikeshare_2022
+WHERE start_station_id = 32901
+	OR start_station_id = 32906
+	OR end_station_id = 32901
+	OR end_station_id = 32906
+RETURNING *;
+
+/* To remove administrative stations from master list. */
+DELETE FROM cbstation_2022
+WHERE station_id = 32901
+	OR station_id = 32906
+RETURNING *;
+
+/* To remove any remaining rides (2020 only) with station ID
+0, another defunct station. */
+DELETE FROM capital_bikeshare_2020
+WHERE start_station_id = 0
+	OR end_station_id = 0
+RETURNING *;
+
+/*To add duration column to 2021 & 22 ride tables, which
+did not have the information. */
+ALTER TABLE capital_bikeshare_2020
+	ADD COLUMN duration_interval INTERVAL;
+ALTER TABLE capital_bikeshare_2021
+	ADD COLUMN duration_interval INTERVAL;
+
+/*To add duration calc to all ride tables, and finish 
+adding interval data type duration data to 2020. All tables
+updated, but only one table calc included here for brevity*/
+UPDATE public.capital_bikeshare_2016
+	SET duration_interval = end_date - start_date;
+	
+/* To remove rides from all ride tables with duration
+greater than 1 day, assuming these are outliers. For 
+brevity, only code for 1 table included here.*/
+DELETE FROM capital_bikeshare_2016
+WHERE duration_interval > interval '1 day'
+RETURNING *;
+
+/* To remove rides from all ride tables with less than
+1 minute duration, assuming these are outliers. This
+includes rides with negative duration.*/
+DELETE FROM capital_bikeshare_2022
+WHERE duration_interval < INTERVAL '1 minute'
+RETURNING *;
+
+/* To add integer duration column to all ride tables except
+for 2020, which already had one, for each of calculations. */
+ALTER TABLE capital_bikeshare_2022
+	ADD COLUMN duration NUMERIC;
+
+/* To convert interval duration to integer duration, in
+minutes, for all ride tables. */
+UPDATE capital_bikeshare_2016
+	SET duration = ROUND(EXTRACT(EPOCH FROM duration_interval)/60,2) 
+
+/* To approximate 'downtown' bike stations for analysis. 
+All tables queried like this.*/
+SELECT *
+FROM cbstation_2022
+WHERE longitude BETWEEN -77.064708 AND -76.995724
+	AND latitude BETWEEN 38.872092 AND 38.913002;
+	
+/* To approximate ride volume downtown, versus overall.
+All tables queried like this.*/
+SELECT COUNT(*)
+FROM capital_bikeshare_2022
+WHERE end_lng BETWEEN -77.064708 AND -76.995724
+	AND end_lat BETWEEN 38.872092 AND 38.913002;
+
+/* To create category to track peak and off-peak biking season
+for all ride tables. */
+ALTER TABLE capital_bikeshare_2022
+	ADD COLUMN season VARCHAR(50);
+UPDATE capital_bikeshare_2022
+	SET season = 'peak'
+		WHERE EXTRACT(MONTH FROM start_date) BETWEEN 4 AND 10;
+UPDATE capital_bikeshare_2022
+	SET season = 'off_peak'
+		WHERE EXTRACT(MONTH FROM start_date) NOT BETWEEN 4 AND 10;
+
+/* To create category to track rush hour (6 AM to 9 AM) versus non
+rush-hour for all ride tables. */
+ALTER TABLE capital_bikeshare_2022
+	ADD COLUMN rush_hour VARCHAR(50);
+UPDATE capital_bikeshare_2016
+	SET rush_hour = 'rush_hour'
+		WHERE EXTRACT(HOUR FROM start_date) BETWEEN 6 AND 8
+			AND EXTRACT(ISODOW FROM start_date) BETWEEN 1 AND 5;
+UPDATE capital_bikeshare_2016
+	SET rush_hour = 'off_hours'
+		WHERE EXTRACT(HOUR FROM start_date) NOT BETWEEN 6 AND 8
+			OR EXTRACT(ISODOW FROM start_date) BETWEEN 6 AND 7;
+
+/* To create category to track rush-in time (6-8 incl), morning
+(9-11 incl) afternoon (12-3 incl) rush-out (4-6incl) evening
+(7-9incl), night (10P-6A) */
+ALTER TABLE capital_bikeshare_2021
+	ADD COLUMN time_day VARCHAR(50);
+UPDATE capital_bikeshare_2022
+	SET time_day = 'rush_hour_in'
+		WHERE EXTRACT(HOUR FROM start_date) BETWEEN 6 AND 8;
+UPDATE capital_bikeshare_2022
+	SET time_day = 'morning'
+		WHERE EXTRACT(HOUR FROM start_date) BETWEEN 9 AND 11;
+UPDATE capital_bikeshare_2022
+	SET time_day = 'afternoon'
+		WHERE EXTRACT(HOUR FROM start_date) BETWEEN 12 AND 15;
+UPDATE capital_bikeshare_2022
+	SET time_day = 'rush_hour_out'
+		WHERE EXTRACT(HOUR FROM start_date) BETWEEN 16 AND 18;
+UPDATE capital_bikeshare_2022
+	SET time_day = 'evening'
+		WHERE EXTRACT(HOUR FROM start_date) BETWEEN 19 AND 21;
+UPDATE capital_bikeshare_2022
+	SET time_day = 'night'
+		WHERE EXTRACT(HOUR FROM start_date) BETWEEN 22 AND 24
+			OR EXTRACT(HOUR FROM start_date) BETWEEN 0 AND 5;
+
+/* To export data into .csv for import into Tableau. */
+COPY public.capital_bikeshare_2016
+	TO 'c:\Users\Public\cbrides2016.csv' DELIMITER ',' CSV HEADER;
+COPY public.capital_bikeshare_2017
+	TO 'c:\Users\Public\cbrides2017.csv' DELIMITER ',' CSV HEADER;
+COPY public.capital_bikeshare_2018
+	TO 'c:\Users\Public\cbrides2018.csv' DELIMITER ',' CSV HEADER;
+COPY public.capital_bikeshare_2019
+	TO 'c:\Users\Public\cbrides2019.csv' DELIMITER ',' CSV HEADER;
+COPY public.capital_bikeshare_2020
+	TO 'c:\Users\Public\cbrides2020.csv' DELIMITER ',' CSV HEADER;
+COPY public.capital_bikeshare_2021
+	TO 'c:\Users\Public\cbrides2021.csv' DELIMITER ',' CSV HEADER;
+COPY public.capital_bikeshare_2022
+	TO 'c:\Users\Public\cbrides2022.csv' DELIMITER ',' CSV HEADER;
+COPY public.cbstation_2022
+	TO 'c:\Users\Public\cbstations2022.csv' DELIMITER ',' CSV HEADER;
